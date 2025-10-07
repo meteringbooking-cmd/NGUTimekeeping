@@ -144,20 +144,42 @@
             color: #6c757d;
             padding: 40px;
         }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e2e3e5;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+
+        .sync-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #28a745;
+            margin-left: 10px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="card">
-            <h1>📍 Geofencing Tracker</h1>
-            <p style="color: #6c757d; margin-bottom: 20px;">Track when people arrive at your location</p>
+            <h1>📍 Geofencing Tracker <span class="sync-indicator" id="syncIndicator"></span></h1>
+            <p style="color: #6c757d; margin-bottom: 20px;">Track when people arrive at your location (synced in real-time)</p>
 
             <div id="error" class="error" style="display: none;"></div>
 
-            <div style="margin: 20px 0;">
-                <label for="userName" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Your Name:</label>
-                <input type="text" id="userName" placeholder="Enter your name" style="width: 100%; padding: 12px; border: 2px solid #e2e3e5; border-radius: 8px; font-size: 16px;">
-            </div>
+            <label for="userName" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Your Name:</label>
+            <input type="text" id="userName" placeholder="Enter your name">
 
             <div id="status" class="status unknown">
                 <span>⏳</span>
@@ -188,28 +210,47 @@
         </div>
 
         <div class="card">
-            <h2 style="margin-bottom: 20px;">Recent Arrivals</h2>
+            <h2 style="margin-bottom: 20px;">Recent Arrivals (Live)</h2>
             <div id="arrivalsList" class="arrivals-list">
-                <div class="empty-state">No arrivals yet. Start tracking to detect when you enter the geofenced area.</div>
+                <div class="empty-state">Loading arrivals...</div>
             </div>
         </div>
     </div>
 
-    <script>
-        // Geofence configuration (customize these values)
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getDatabase, ref, push, onValue, query, orderByChild, limitToLast } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBmZPvqlBtQcFvF0aGPao53j7MPtMWomaY",
+            authDomain: "ngu-timekeeping.firebaseapp.com",
+            databaseURL: "https://ngu-timekeeping-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "ngu-timekeeping",
+            storageBucket: "ngu-timekeeping.firebasestorage.app",
+            messagingSenderId: "906800675917",
+            appId: "1:906800675917:web:3abafa206bf8e49883f004"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+        const arrivalsRef = ref(database, 'arrivals');
+
+        // Geofence configuration
         const geofence = {
-            latitude: 54.9493,
-            longitude: -1.5990,
-            radius: 200 // meters
+            latitude: 54.93863815087737,
+            longitude: -1.6294077627765846,
+            radius: 100
         };
 
         let watchId = null;
         let isInside = false;
-        let arrivals = [];
 
-        // Calculate distance between two coordinates using Haversine formula
+        // Calculate distance between two coordinates
         function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; // Earth's radius in meters
+            const R = 6371e3;
             const φ1 = lat1 * Math.PI / 180;
             const φ2 = lat2 * Math.PI / 180;
             const Δφ = (lat2 - lat1) * Math.PI / 180;
@@ -236,7 +277,6 @@
             const distance = calculateDistance(lat, lon, geofence.latitude, geofence.longitude);
             const nowInside = distance <= geofence.radius;
 
-            // Update current location display
             document.getElementById('currentLocation').textContent = 
                 `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
             document.getElementById('distance').textContent = 
@@ -247,7 +287,6 @@
                 logArrival(lat, lon, distance);
             }
 
-            // Update status
             isInside = nowInside;
             const statusEl = document.getElementById('status');
             if (isInside) {
@@ -258,7 +297,6 @@
                 statusEl.innerHTML = '<span>📍</span><span>Outside Geofence</span>';
             }
 
-            // Hide error if location is working
             document.getElementById('error').style.display = 'none';
         }
 
@@ -267,36 +305,49 @@
             
             const arrival = {
                 name: userName,
-                timestamp: new Date(),
+                timestamp: Date.now(),
                 latitude: lat,
                 longitude: lon,
                 distance: distance
             };
 
-            arrivals.unshift(arrival);
-            updateArrivalsList();
+            // Push to Firebase
+            push(arrivalsRef, arrival);
         }
 
-        function updateArrivalsList() {
+        // Listen for arrivals in real-time
+        const arrivalsQuery = query(arrivalsRef, orderByChild('timestamp'), limitToLast(50));
+        onValue(arrivalsQuery, (snapshot) => {
             const listEl = document.getElementById('arrivalsList');
-            
+            const arrivals = [];
+
+            snapshot.forEach((childSnapshot) => {
+                arrivals.push(childSnapshot.val());
+            });
+
+            // Sort by most recent first
+            arrivals.sort((a, b) => b.timestamp - a.timestamp);
+
             if (arrivals.length === 0) {
                 listEl.innerHTML = '<div class="empty-state">No arrivals yet. Start tracking to detect when you enter the geofenced area.</div>';
                 return;
             }
 
-            listEl.innerHTML = arrivals.map(arrival => `
-                <div class="arrival-item">
-                    <div class="arrival-time">
-                        👤 ${arrival.name} - ${arrival.timestamp.toLocaleString()}
+            listEl.innerHTML = arrivals.map(arrival => {
+                const date = new Date(arrival.timestamp);
+                return `
+                    <div class="arrival-item">
+                        <div class="arrival-time">
+                            👤 ${arrival.name} - ${date.toLocaleString()}
+                        </div>
+                        <div class="arrival-coords">
+                            📍 ${arrival.latitude.toFixed(6)}, ${arrival.longitude.toFixed(6)} 
+                            (${Math.round(arrival.distance)}m from center)
+                        </div>
                     </div>
-                    <div class="arrival-coords">
-                        📍 ${arrival.latitude.toFixed(6)}, ${arrival.longitude.toFixed(6)} 
-                        (${Math.round(arrival.distance)}m from center)
-                    </div>
-                </div>
-            `).join('');
-        }
+                `;
+            }).join('');
+        });
 
         function handleLocationError(error) {
             const errorEl = document.getElementById('error');
@@ -317,9 +368,15 @@
             }
         }
 
-        function startTracking() {
+        window.startTracking = function() {
             if (!navigator.geolocation) {
                 alert('Geolocation is not supported by your browser');
+                return;
+            }
+
+            const userName = document.getElementById('userName').value.trim();
+            if (!userName) {
+                alert('Please enter your name before starting tracking');
                 return;
             }
 
@@ -335,9 +392,9 @@
 
             document.getElementById('startBtn').style.display = 'none';
             document.getElementById('stopBtn').style.display = 'inline-block';
-        }
+        };
 
-        function stopTracking() {
+        window.stopTracking = function() {
             if (watchId !== null) {
                 navigator.geolocation.clearWatch(watchId);
                 watchId = null;
@@ -349,7 +406,7 @@
             const statusEl = document.getElementById('status');
             statusEl.className = 'status unknown';
             statusEl.innerHTML = '<span>⏸️</span><span>Tracking Stopped</span>';
-        }
+        };
 
         // Initialize UI
         updateUI();
