@@ -154,6 +154,11 @@
 
             <div id="error" class="error" style="display: none;"></div>
 
+            <div style="margin: 20px 0;">
+                <label for="userName" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Your Name:</label>
+                <input type="text" id="userName" placeholder="Enter your name" style="width: 100%; padding: 12px; border: 2px solid #e2e3e5; border-radius: 8px; font-size: 16px;">
+            </div>
+
             <div id="status" class="status unknown">
                 <span>⏳</span>
                 <span>Waiting for location...</span>
@@ -193,8 +198,8 @@
     <script>
         // Geofence configuration (customize these values)
         const geofence = {
-            latitude: 54.9493,
-            longitude: -1.5990,
+            latitude: 54.9381605779733,
+            longitude: -1.629266318145457,
             radius: 100 // meters
         };
 
@@ -258,7 +263,10 @@
         }
 
         function logArrival(lat, lon, distance) {
+            const userName = document.getElementById('userName').value.trim() || 'Anonymous';
+            
             const arrival = {
+                name: userName,
                 timestamp: new Date(),
                 latitude: lat,
                 longitude: lon,
@@ -280,7 +288,7 @@
             listEl.innerHTML = arrivals.map(arrival => `
                 <div class="arrival-item">
                     <div class="arrival-time">
-                        🕐 ${arrival.timestamp.toLocaleString()}
+                        👤 ${arrival.name} - ${arrival.timestamp.toLocaleString()}
                     </div>
                     <div class="arrival-coords">
                         📍 ${arrival.latitude.toFixed(6)}, ${arrival.longitude.toFixed(6)} 
